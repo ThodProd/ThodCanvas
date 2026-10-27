@@ -19,10 +19,27 @@ const tools=[
  ['lasso','Лассо','L','Обведите область. Контур замкнётся после отпускания.','<path d="M6 16C-3 7 8 1 17 4s7 14-5 14c-8 0-4-8 0-5s1 10-4 9"/>'],
  ['wand','Волшебная палочка','W','Щёлкните по цвету: выделится связная область в пределах допуска.','<path d="m3 21 12-12 3 3L6 24M17 2v4m-5-3 2 3m6 1 3-2M3 9h4"/>'],
  ['auto-eraser','Автоластик','','Щёлкните по однотонному фону. Стирается только связная область.','<path d="m3 14 10-10 8 8-9 9H9zM17 1v4m3-1 3-2M8 9l8 8"/>'],
+ ['background','Фон и объект','G','Выберите действие ниже. Обработка начинается только по кнопке.','<path d="M3 3h18v18H3zM8 16l4-8 4 8M5 5l14 14"/>'],
  ['hand','Рука','H','Перемещение холста без изменения картинки.','<path d="M7 12V6a2 2 0 0 1 4 0v5-8a2 2 0 0 1 4 0v8-6a2 2 0 0 1 4 0v7-3a2 2 0 0 1 4 0v7c0 6-13 9-16 3l-4-7a2 2 0 0 1 3-2z"/>']
 ];
-$('tools').innerHTML=tools.map(([id,name,key,,path])=>`<button data-tool="${id}" title="${name}${key?' ('+key+')':''}" aria-label="${name}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${path}</svg></button>`).join('');
+$('tools').innerHTML=tools.map(([id,name,key,,path])=>`<button data-tool="${id}" data-tooltip="${name}${key?' ('+key+')':''}" aria-label="${name}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${path}</svg></button>`).join('');
 $('palette').innerHTML=['#24262b','#ffffff','#3676e8','#d9545e','#e2b65f','#4f9c82','#9271bb','#f28a48'].map(c=>`<button data-color="${c}" style="background:${c}" title="${c}" aria-label="Цвет ${c}"></button>`).join('');
+
+let tipTimer;
+for(const button of document.querySelectorAll('#tools [data-tooltip]')){
+ const hide=()=>{clearTimeout(tipTimer);$('tool-tooltip').hidden=true;};
+ const show=()=>{hide();tipTimer=setTimeout(()=>{const r=button.getBoundingClientRect(),tip=$('tool-tooltip');tip.textContent=button.dataset.tooltip;tip.style.left=(r.right+8)+'px';tip.style.top=Math.min(r.top,innerHeight-40)+'px';tip.hidden=false;},140);};
+ button.addEventListener('pointerenter',show);button.addEventListener('pointerleave',hide);button.addEventListener('focus',show);button.addEventListener('blur',hide);button.addEventListener('click',hide);
+}
+function toolOptions(){
+ const t=state.tool,brush=['brush','eraser','restore'].includes(t),shape=['arrow','rect','ellipse'].includes(t),selection=['select-rect','select-ellipse','lasso','wand'].includes(t);
+ const show=(id,visible)=>{$(id).closest('label').hidden=!visible;};
+ show('color',['brush','arrow','rect','ellipse','text','background'].includes(t));$('palette').hidden=$('color').closest('label').hidden;
+ show('size',brush||shape);show('softness',brush);show('tolerance',t==='wand'||t==='auto-eraser');show('fill',t==='rect'||t==='ellipse');
+ $('text-options').hidden=t!=='text';$('selection-options').hidden=!selection;$('background-options').hidden=t!=='background';
+ $('text-apply').hidden=state.layers.find(l=>l.id===state.active)?.kind!=='text';
+}
+
 function canvas(w,h){const c=document.createElement('canvas');c.width=w;c.height=h;return c;}
 const blob=c=>new Promise((resolve,reject)=>c.toBlob(b=>b?resolve(b):reject(Error('Не удалось сохранить холст в память.')),'image/png'));
 const dataUrl=b=>new Promise((resolve,reject)=>{const f=new FileReader();f.onload=()=>resolve(f.result);f.onerror=reject;f.readAsDataURL(b);});
@@ -51,7 +68,7 @@ async function restore(s){const next=[];for(const l of s.layers){next.push({...l
 async function mutate(label,fn){const before=state.history[state.index];try{await fn();await commit(label);}catch(e){if(before)await restore(before);throw e;}}
 function action(label,fn){return task(label,()=>mutate(label,fn));}
 async function historyStep(delta){return task(delta<0?'Отмена':'Повтор',async()=>{const n=state.index+delta;if(n<0||n>=state.history.length)return;await restore(state.history[n]);state.index=n;setDirty(true);status(state.history[n].label);});}
-function setTool(id){if(state.busy||state.gesture)return;state.tool=id;const t=tools.find(t=>t[0]===id);$('tool-title').textContent=t[1];$('tool-hint').textContent=t[3];viewport.style.cursor=id==='hand'?'grab':id==='move'?'move':'crosshair';document.querySelectorAll('[data-tool]').forEach(b=>{b.classList.toggle('active',b.dataset.tool===id);b.setAttribute('aria-pressed',b.dataset.tool===id);});}
+function setTool(id){if(state.busy||state.gesture)return;state.tool=id;const t=tools.find(t=>t[0]===id);$('tool-title').textContent=t[1];$('tool-hint').textContent=t[3];viewport.style.cursor=id==='hand'?'grab':id==='move'?'move':'crosshair';document.querySelectorAll('[data-tool]').forEach(b=>{b.classList.toggle('active',b.dataset.tool===id);b.setAttribute('aria-pressed',b.dataset.tool===id);});toolOptions();viewport.focus({preventScroll:true});}
 function sync(){const has=!!state.w,locked=state.busy||!!state.gesture;for(const field of document.querySelectorAll('aside input,aside textarea'))field.disabled=locked;for(const b of document.querySelectorAll('aside button,#tools button'))b.disabled=!has||locked;$('undo').disabled=locked||state.index<=0;$('redo').disabled=locked||state.index>=state.history.length-1;for(const id of ['export','project-save'])$(id).disabled=!has||locked;for(const id of ['open','welcome-open'])$(id).disabled=locked;$('dimensions').textContent=has?`${state.w} × ${state.h} px · ${Math.round(state.scale*100)}%`:'';$('history').innerHTML=state.history.slice(0,state.index+1).map(s=>`<li>${esc(s.label)}</li>`).join('');}
 function fit(){if(!state.w)return;state.scale=Math.min((viewport.clientWidth-70)/state.w,(viewport.clientHeight-100)/state.h,1);state.scale=Math.max(.005,state.scale);state.x=(viewport.clientWidth-state.w*state.scale)/2;state.y=(viewport.clientHeight-state.h*state.scale)/2;render();sync();}
 function zoom(factor,p={x:viewport.clientWidth/2,y:viewport.clientHeight/2}){const n=Math.max(.005,Math.min(32,state.scale*factor)),x=(p.x-state.x)/state.scale,y=(p.y-state.y)/state.scale;state.x=p.x-x*n;state.y=p.y-y*n;state.scale=n;render();sync();}
@@ -91,7 +108,7 @@ function stroke(l,a,b,tool){const distance=Math.hypot(b.x-a.x,b.y-a.y),steps=Mat
 viewport.addEventListener('pointerdown',async e=>{
  if(!state.w||state.busy||state.gesture||e.target!==screen)return;
  const p=point(e);if(e.button===1||state.space||state.tool==='hand'){state.gesture={type:'pan',cx:e.clientX,cy:e.clientY,x:state.x,y:state.y};viewport.setPointerCapture(e.pointerId);e.preventDefault();return;}
- if(e.button!==0)return;
+ if(e.button!==0)return;viewport.focus({preventScroll:true});if(state.tool==='background')return;
  try{
   if(state.tool==='wand'||state.tool==='auto-eraser'){await action('Выделение по цвету',()=>wand(p,state.tool==='auto-eraser'));return;}
   if(state.tool==='text'){await action('Текст',()=>makeText(p));return;}
@@ -130,14 +147,14 @@ function renderLayers(){
   const row=document.createElement('div');row.className='layer'+(l.id===state.active?' selected':'')+(!l.visible?' hidden':'');row.dataset.layer=l.id;
   const thumb=canvas(32,32),t=thumb.getContext('2d'),scale=Math.min(32/l.canvas.width,32/l.canvas.height);t.drawImage(l.canvas,(32-l.canvas.width*scale)/2,(32-l.canvas.height*scale)/2,l.canvas.width*scale,l.canvas.height*scale);
   row.innerHTML=`<img src="${thumb.toDataURL()}" alt=""><div class="layer-info"><input value="${esc(l.name)}" aria-label="Имя слоя"><small>${l.kind==='text'?'Текст':l.kind==='shape'?'Фигура':'Изображение'} · ${Math.round(l.opacity*100)}%</small></div><button data-visible title="Показать / скрыть">${l.visible?'◉':'○'}</button><button data-lock title="Блокировка">${l.locked?'●':'◇'}</button>`;
-  row.onclick=e=>{if(state.busy||state.gesture||e.target.closest('button,input'))return;state.active=l.id;renderLayers();render();};
+  row.onclick=e=>{if(state.busy||state.gesture||e.target.closest('button,input'))return;state.active=l.id;if(l.kind==='text')setTool('text');renderLayers();toolOptions();render();};
   row.querySelector('input').onchange=e=>action('Переименование слоя',()=>{l.name=e.target.value.slice(0,80)||'Слой';});
   row.querySelector('[data-visible]').onclick=()=>action('Видимость слоя',()=>{l.visible=!l.visible;});
   row.querySelector('[data-lock]').onclick=()=>action('Блокировка слоя',()=>{l.locked=!l.locked;});
   $('layers').append(row);
  }
  const l=state.layers.find(l=>l.id===state.active);$('opacity').value=l?Math.round(l.opacity*100):100;
- if(l?.kind==='text'){$('text').value=l.text;$('font-size').value=l.fontSize;$('bold').checked=l.bold;}
+ if(l?.kind==='text'){$('text').value=l.text;$('font-size').value=l.fontSize;$('bold').checked=l.bold;$('color').value=l.color;}toolOptions();
 }
 async function openFile(file,asLayer=false,asBackground=false){
  if(!file)return;if(file.size>512*1024*1024)throw Error('Файл больше 512 МБ.');
@@ -145,11 +162,11 @@ async function openFile(file,asLayer=false,asBackground=false){
  if(file.name.endsWith('.thodcanvas')){if(asLayer||asBackground)throw Error('Проект нужно открывать кнопкой «Открыть».');await loadProject(file);return;}
  const image=await createImageBitmap(file);try{checkSize(image.width,image.height);if(asLayer||asBackground)checkBudget(image.width*image.height);const c=canvas(image.width,image.height);c.getContext('2d').drawImage(image,0,0);
  if(asLayer||asBackground){await mutate('Добавлено изображение',async()=>{const l=layer(c,file.name);l.x=Math.round((state.w-c.width)/2);l.y=Math.round((state.h-c.height)/2);if(asBackground){const target=editable(),mask=await aiMask(target);removeBackground(target,mask,false);addLayer(l,state.layers.indexOf(target));state.active=target.id;}else addLayer(l);});}
- else {state.w=c.width;state.h=c.height;state.name=file.name.replace(/\.[^.]+$/,'');state.layers=[];state.history=[];state.index=-1;setSelection(null);addLayer(layer(c,file.name));await commit('Исходное изображение');setDirty(false);$('welcome').hidden=true;$('doc-name').textContent=file.name;fit();status('Изображение открыто без изменений');}
+ else {state.w=c.width;state.h=c.height;state.name=file.name.replace(/\.[^.]+$/,'');state.layers=[];state.history=[];state.index=-1;setSelection(null);addLayer(layer(c,file.name));await commit('Исходное изображение');setDirty(false);$('welcome').hidden=true;$('doc-name').textContent=file.name;fit();$('font-size').value=Math.min(1000,Math.max(16,Math.round(28/state.scale)));status('Изображение открыто без изменений');}
  }finally{image.close();}
 }
 function textCanvas(text,size,bold,color){const lines=text.split('\n').slice(0,100),measure=canvas(1,1).getContext('2d');measure.font=`${bold?'600':'400'} ${size}px "Segoe UI", sans-serif`;const w=Math.ceil(Math.max(1,...lines.map(s=>measure.measureText(s).width))+12),h=Math.ceil(lines.length*size*1.3+12);checkSize(w,h);const c=canvas(w,h),cctx=c.getContext('2d');cctx.font=measure.font;cctx.fillStyle=color;cctx.textBaseline='top';lines.forEach((s,i)=>cctx.fillText(s,6,6+i*size*1.3));return c;}
-function makeText(p,replace=null){const text=$('text').value.slice(0,10000);if(!text.trim())throw Error('Введите текст справа.');const size=Math.max(6,Math.min(1000,+$('font-size').value||64)),bold=$('bold').checked,color=$('color').value,c=textCanvas(text,size,bold,color);applySelection(c,p.x,p.y);const extra={x:p.x,y:p.y,text,fontSize:size,bold,color};if(replace){checkBudget(Math.max(0,c.width*c.height-replace.canvas.width*replace.canvas.height));Object.assign(replace,extra,{canvas:c,modified:true,baseBlob:null,baseCanvas:null});}else addLayer(layer(c,text.slice(0,28),'text',extra));}
+function makeText(p,replace=null){const text=$('text').value.slice(0,10000);if(!text.trim())throw Error('Введите текст справа.');const size=Math.max(6,Math.min(1000,+$('font-size').value||64)),bold=$('bold').checked,color=$('color').value,c=textCanvas(text,size,bold,color);const x=replace?p.x:Math.max(0,Math.min(state.w-Math.min(c.width,state.w),p.x)),y=replace?p.y:Math.max(0,Math.min(state.h-Math.min(c.height,state.h),p.y));const extra={x,y,text,fontSize:size,bold,color};if(replace){checkBudget(Math.max(0,c.width*c.height-replace.canvas.width*replace.canvas.height));Object.assign(replace,extra,{canvas:c,modified:true,baseBlob:null,baseCanvas:null});}else addLayer(layer(c,text.slice(0,28),'text',extra));}
 // Pixel analysis runs outside the UI thread; input and output buffers are transferred, never copied in JSON.
 function pixelWork(data){return new Promise((resolve,reject)=>{const code=`(${pixelWorker.toString()})();`,url=URL.createObjectURL(new Blob([code],{type:'text/javascript'}));const worker=new Worker(url);URL.revokeObjectURL(url);worker.onmessage=e=>{worker.terminate();resolve(new Uint8ClampedArray(e.data));};worker.onerror=e=>{worker.terminate();reject(Error(e.message||'Ошибка обработки пикселей.'));};worker.postMessage(data,[data.pixels.buffer]);});}
 function pixelWorker(){self.onmessage=e=>{if(e.data.kind==='outline'){const {pixels,w,h,radius,color}=e.data,src=new Uint8Array(w*h),horizontal=new Uint8Array(w*h),vertical=new Uint8Array(w*h);for(let i=0;i<src.length;i++)src[i]=pixels[i*4+3];function pass(input,output,rows,cols,stride,step){const queue=new Int32Array(cols);for(let row=0;row<rows;row++){let head=0,tail=0,right=0;for(let col=0;col<cols;col++){const end=Math.min(cols-1,col+radius);while(right<=end){while(tail>head&&input[row*stride+queue[tail-1]*step]<=input[row*stride+right*step])tail--;queue[tail++]=right++;}while(tail>head&&queue[head]<col-radius)head++;output[row*stride+col*step]=input[row*stride+queue[head]*step];}}}pass(src,horizontal,h,w,w,1);pass(horizontal,vertical,w,h,1,w);const output=new Uint8ClampedArray(w*h*4);for(let i=0;i<src.length;i++){output[i*4]=color[0];output[i*4+1]=color[1];output[i*4+2]=color[2];output[i*4+3]=Math.max(0,vertical[i]-src[i]);}self.postMessage(output.buffer,[output.buffer]);return;}const {pixels,w,h,x,y,tolerance}=e.data,mask=new Uint8ClampedArray(w*h*4),visited=new Uint8Array(w*h),queue=new Int32Array(w*h);let head=0,tail=0;const start=Math.min(w*h-1,Math.max(0,y*w+x)),offset=start*4,base=[pixels[offset],pixels[offset+1],pixels[offset+2],pixels[offset+3]],limit=tolerance*tolerance*4;queue[tail++]=start;visited[start]=1;while(head<tail){const n=queue[head++],i=n*4;let distance=0;for(let k=0;k<4;k++)distance+=(pixels[i+k]-base[k])**2;if(distance>limit)continue;mask[i]=mask[i+1]=mask[i+2]=mask[i+3]=255;const col=n%w;for(const v of [col?n-1:-1,col<w-1?n+1:-1,n-w,n+w])if(v>=0&&v<w*h&&!visited[v]){visited[v]=1;queue[tail++]=v;}}self.postMessage(mask.buffer,[mask.buffer]);};}
@@ -184,6 +201,7 @@ wire('layer-delete','Удаление слоя',()=>{const l=editable(),i=state.
 wire('layer-copy','Дубликат слоя',async()=>{const l=active(),copy=await fromBlob(l.blob);addLayer(layer(copy,l.name+' — копия',l.kind,{x:l.x,y:l.y,opacity:l.opacity,baseBlob:l.baseBlob,text:l.text,fontSize:l.fontSize,bold:l.bold,color:l.color}),state.layers.indexOf(l)+1);});
 for(const [id,delta] of [['layer-up',1],['layer-down',-1]])wire(id,'Порядок слоёв',()=>{const l=active(),i=state.layers.indexOf(l),n=Math.max(0,Math.min(state.layers.length-1,i+delta));state.layers.splice(i,1);state.layers.splice(n,0,l);});
 $('opacity').onchange=()=>action('Непрозрачность',()=>{editable().opacity=+$('opacity').value/100;});
+wire('text-add','Добавлен текст',()=>makeText({x:state.w/2,y:state.h/2}));
 wire('text-apply','Изменение текста',()=>{const l=editable();if(l.kind!=='text')throw Error('Выберите текстовый слой.');makeText({x:l.x,y:l.y},l);});
 wire('select-all','Выделить всё',()=>{const c=canvas(state.w,state.h),cx=c.getContext('2d');cx.fillStyle='white';cx.fillRect(0,0,state.w,state.h);setSelection(c);});
 wire('select-none','Снять выделение',()=>setSelection(null));
@@ -194,7 +212,23 @@ wire('cutout','Удаление фона',async()=>{const l=editable();removeBac
 wire('background-color','Замена фона цветом',()=>backgroundEffect('color'));wire('background-blur','Размытие фона',()=>backgroundEffect('blur'));wire('outline','Обводка объекта',()=>backgroundEffect('outline'));
 wire('export','Экспорт PNG',()=>save(false),false);wire('project-save','Сохранение проекта',()=>save(true),false);
 $('cancel').onclick=async()=>{if(state.job){$('cancel').disabled=true;try{await rpc('job.cancel',{id:state.job});}finally{$('cancel').disabled=false;}}};
-window.addEventListener('keydown',e=>{if(e.target.closest('input,textarea,dialog'))return;if(e.key===' '){state.space=true;e.preventDefault();}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();historyStep(e.shiftKey?1:-1);return;}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='y'){e.preventDefault();historyStep(1);return;}if(e.ctrlKey&&e.key.toLowerCase()==='s'){e.preventDefault();task('Сохранение проекта',()=>save(true));return;}if(e.ctrlKey&&e.key.toLowerCase()==='a'){e.preventDefault();$('select-all').click();return;}if(e.ctrlKey&&e.key.toLowerCase()==='d'){e.preventDefault();$('select-none').click();return;}if(e.key==='Delete'){$('selection-delete').click();return;}const t=tools.find(t=>t[2]&&t[2].toLowerCase()===e.key.toLowerCase());if(t&&!e.ctrlKey&&!e.altKey)setTool(t[0]);});
+window.addEventListener('keydown',e=>{
+ if(e.target.closest('dialog'))return;
+ const edit=e.target.matches('textarea,input:not([type=range]):not([type=checkbox]):not([type=color])'),mod=e.ctrlKey||e.metaKey;
+ if(mod&&(e.code==='KeyZ'||e.code==='KeyY')){
+   if(edit)return;e.preventDefault();historyStep(e.code==='KeyY'||e.shiftKey?1:-1);return;
+ }
+ if(mod&&e.code==='KeyS'){e.preventDefault();if(state.w)task('Сохранение проекта',()=>save(true));return;}
+ if(edit)return;
+ if(e.code==='Space'){state.space=true;e.preventDefault();return;}
+ if(mod&&e.code==='KeyA'){e.preventDefault();$('select-all').click();return;}
+ if(mod&&e.code==='KeyD'){e.preventDefault();$('select-none').click();return;}
+ if(mod&&e.code==='KeyJ'){e.preventDefault();$('layer-copy').click();return;}
+ if(e.code==='Delete'||e.code==='Backspace'){e.preventDefault();$(state.selection?'selection-delete':'layer-delete').click();return;}
+ if(e.code==='Escape'&&state.selection){e.preventDefault();$('select-none').click();return;}
+ if(mod&&e.code==='Digit0'){e.preventDefault();fit();return;}
+ const t=tools.find(t=>t[2]&&'Key'+t[2]===e.code);if(t&&!mod&&!e.altKey){e.preventDefault();setTool(t[0]);}
+});
 window.addEventListener('keyup',e=>{if(e.key===' ')state.space=false;});window.addEventListener('blur',()=>state.space=false);
 
 setTool('move');sync();render();

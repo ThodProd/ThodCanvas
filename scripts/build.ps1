@@ -16,4 +16,4 @@ New-Item (Join-Path $stage 'worker/models') -ItemType Directory -Force | Out-Nul
 Copy-Item -LiteralPath $ModelFile -Destination (Join-Path $stage 'worker/models/isnet-general-use.onnx')
 Copy-Item (Join-Path $root 'hub/manifest.json') (Join-Path $stage 'manifest.json')
 foreach($name in @('README.md','LICENSE','THIRD-PARTY-NOTICES.md','licenses')){Copy-Item (Join-Path $root $name) $stage -Recurse}
-& (Join-Path $HubRoot 'scripts/package-module.ps1') -PackageDirectory $stage -Repository ThodProd/ThodCanvas -OutputDirectory $OutputDirectory -Notes 'Отдельный редактор: исходное разрешение, слои, кисти, фигуры, текст, выделение и история. Локальное автовыделение IS-Net, удаление и замена фона, размытие и обводка. Открытие без автоматической обработки.'
+& (Join-Path $HubRoot 'scripts/package-module.ps1') -PackageDirectory $stage -Repository ThodProd/ThodCanvas -OutputDirectory $OutputDirectory -Notes 'Слои сверху и параметры только выбранного инструмента. Быстрые подсказки, текст без обрезки выделением, Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z в русской раскладке.'
