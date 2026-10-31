@@ -16,7 +16,7 @@ New-Item (Join-Path $stage 'worker/models') -ItemType Directory -Force | Out-Nul
 Copy-Item -LiteralPath $ModelFile -Destination (Join-Path $stage 'worker/models/isnet-general-use.onnx')
 Copy-Item (Join-Path $root 'hub/manifest.json') (Join-Path $stage 'manifest.json')
 foreach($name in @('README.md','LICENSE','THIRD-PARTY-NOTICES.md','licenses')){Copy-Item (Join-Path $root $name) $stage -Recurse}
-& (Join-Path $HubRoot 'scripts/package-module.ps1') -PackageDirectory $stage -Repository ThodProd/ThodCanvas -OutputDirectory $OutputDirectory -Notes 'Новый минималистичный редактор: рука, перемещение, обрезка по Enter, кисть, заливка, ластик по цвету фона и стирание до прозрачности. Текст новым слоем, удаление фона ИИ по щелчку или лассо. Слои в одну строку, справа только параметры выбранного инструмента.'
+& (Join-Path $HubRoot 'scripts/package-module.ps1') -PackageDirectory $stage -Repository ThodProd/ThodCanvas -OutputDirectory $OutputDirectory -Notes 'Текст вводится прямо на холсте с кареткой, шрифтами и живым обновлением. Кадрирование с рамкой по краям, видимое выделение, инверсия, заливка, копирование и вырезание на новый слой. AI-выделение объекта щелчком и удаление фона нейросетью с мягким краем.'
 $zipPath=Join-Path $OutputDirectory ("$($manifest.id)-$($manifest.version)-win-x64.zip")
 if(!(Test-Path -LiteralPath $zipPath)){throw 'Package was not created'}
 # The catalog format uses forward slashes inside ZIP archives; rewrite entries created by .NET on Windows.
