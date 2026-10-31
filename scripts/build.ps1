@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][string]$HubRoot,[Parameter(Mandatory=$true)][string]$ModelFile,[string]$OutputDirectory='')
+﻿param([Parameter(Mandatory=$true)][string]$HubRoot,[Parameter(Mandatory=$true)][string]$ModelFile,[string]$OutputDirectory='')
 $ErrorActionPreference='Stop'
 $root=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 if(!$OutputDirectory){$OutputDirectory=Join-Path $root 'artifacts/release'}
@@ -16,4 +16,27 @@ New-Item (Join-Path $stage 'worker/models') -ItemType Directory -Force | Out-Nul
 Copy-Item -LiteralPath $ModelFile -Destination (Join-Path $stage 'worker/models/isnet-general-use.onnx')
 Copy-Item (Join-Path $root 'hub/manifest.json') (Join-Path $stage 'manifest.json')
 foreach($name in @('README.md','LICENSE','THIRD-PARTY-NOTICES.md','licenses')){Copy-Item (Join-Path $root $name) $stage -Recurse}
-& (Join-Path $HubRoot 'scripts/package-module.ps1') -PackageDirectory $stage -Repository ThodProd/ThodCanvas -OutputDirectory $OutputDirectory -Notes 'Слои сверху и параметры только выбранного инструмента. Быстрые подсказки, текст без обрезки выделением, Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z в русской раскладке.'
+& (Join-Path $HubRoot 'scripts/package-module.ps1') -PackageDirectory $stage -Repository ThodProd/ThodCanvas -OutputDirectory $OutputDirectory -Notes 'Новый минималистичный редактор: рука, перемещение, обрезка по Enter, кисть, заливка, ластик по цвету фона и стирание до прозрачности. Текст новым слоем, удаление фона ИИ по щелчку или лассо. Слои в одну строку, справа только параметры выбранного инструмента.'
+$zipPath=Join-Path $OutputDirectory ("$($manifest.id)-$($manifest.version)-win-x64.zip")
+if(!(Test-Path -LiteralPath $zipPath)){throw 'Package was not created'}
+# The catalog format uses forward slashes inside ZIP archives; rewrite entries created by .NET on Windows.
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$temp=$zipPath+'.tmp'
+Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
+$source=[IO.Compression.ZipFile]::OpenRead($zipPath)
+$target=[IO.Compression.ZipFile]::Open($temp,[IO.Compression.ZipArchiveMode]::Create)
+try{
+    foreach($entry in $source.Entries){
+        if($entry.FullName.EndsWith('/')){continue}
+        $newEntry=$target.CreateEntry($entry.FullName.Replace('\','/'),[IO.Compression.CompressionLevel]::Optimal)
+        $inputStream=$entry.Open();$outputStream=$newEntry.Open()
+        try{$inputStream.CopyTo($outputStream)}finally{$outputStream.Dispose();$inputStream.Dispose()}
+    }
+}finally{$source.Dispose();$target.Dispose()}
+Move-Item -LiteralPath $temp -Destination $zipPath -Force
+$releasePath=Join-Path $OutputDirectory 'thodhub-release.json'
+$release=[IO.File]::ReadAllText($releasePath,[Text.UTF8Encoding]::new($false)) | ConvertFrom-Json
+$release.sha256=(Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+$release.size=(Get-Item -LiteralPath $zipPath).Length
+[IO.File]::WriteAllText($releasePath,($release | ConvertTo-Json -Depth 5),[Text.UTF8Encoding]::new($false))
+& (Join-Path $HubRoot 'scripts/validate-package.ps1') -Package $zipPath -Release $releasePath -Repository ThodProd/ThodCanvas | Write-Host
