@@ -116,8 +116,9 @@ function addLayer(l,index=state.layers.length){state.layers.splice(index,0,l);st
 function setDirty(value){state.dirty=value;thodHub.call('state.dirty',{dirty:value}).catch(()=>{if(value)status('Для защиты несохранённых изменений обновите ThodHUB до 0.1.1.');});}
 function status(s){$('status').textContent=s;}
 async function message(text,confirm=false){if($('message-dialog').open)return false;$('message-title').textContent=confirm?'Продолжить?':'ThodCanvas';$('message-text').textContent=text;$('message-cancel').hidden=!confirm;const d=$('message-dialog');d.showModal();return await new Promise(resolve=>d.addEventListener('close',()=>resolve(d.returnValue==='ok'),{once:true}));}
-function setBusy(label){state.busy=true;$('busy').hidden=false;$('busy-label').textContent=label;$('progress').removeAttribute('value');$('cancel').hidden=true;$('cancel').disabled=false;sync();}
-async function task(label,fn){if(state.textEdit&&label!=='Текст')await finishTextEdit();if(state.busy||state.gesture)return;setBusy(label);try{return await fn();}catch(e){status(e.message);if(!/отмен/i.test(e.message||''))await message(e.message);}finally{state.busy=false;state.job=null;$('busy').hidden=true;$('cancel').hidden=true;$('progress').removeAttribute('value');sync();render();}}
+function setBusyProgress(value,label){const p=Math.max(0,Math.min(100,Math.round(value||0)));$('progress').value=p;$('busy-percent').textContent=p+'%';if(label)$('busy-label').textContent=label;}
+function setBusy(label){state.busy=true;$('busy').hidden=false;setBusyProgress(0,label);$('cancel').hidden=true;$('cancel').disabled=false;sync();}
+async function task(label,fn){if(state.textEdit&&label!=='Текст')await finishTextEdit();if(state.busy||state.gesture)return;setBusy(label);try{return await fn();}catch(e){status(e.message);if(!/отмен/i.test(e.message||''))await message(e.message);}finally{state.busy=false;state.job=null;$('busy').hidden=true;$('cancel').hidden=true;setBusyProgress(0);sync();render();}}
 async function snapshot(label){
  const layers=[];
  for(const l of state.layers){if(l.modified||!l.blob){l.blob=await blob(l.canvas);l.modified=false;}if(!l.baseBlob)l.baseBlob=l.blob;const {canvas:c,baseCanvas,modified,...saved}=l;layers.push({...saved});}
@@ -213,7 +214,7 @@ function paint(){
  if(g&&g.type==='move'){const l=g.layer;ox.save();ox.translate(x,y);ox.scale(s,s);ox.strokeStyle=accent();ox.lineWidth=1/s;ox.setLineDash([4/s,3/s]);ox.strokeRect(l.x,l.y,l.canvas.width,l.canvas.height);ox.restore();}
  drawCrop(x,y,s);
 }
-let selectionEdge=null,selectionEdgeKey='',antsFrame=null,antsTile=null,antsOffset=0,antsRaf=0;
+let selectionEdge=null,selectionEdgeKey='',antsFrame=null,antsTile=null,antsOffset=0,antsRaf=0,antsLast=0;
 function selectionAntsKey(){return `${state.selectionVersion}|${state.x}|${state.y}|${state.scale}|${viewport.clientWidth}|${viewport.clientHeight}`;}
 function buildSelectionEdge(){
  const vw=viewport.clientWidth,vh=viewport.clientHeight,c=canvas(vw,vh),ec=c.getContext('2d'),sel=state.selection;
@@ -245,7 +246,13 @@ function drawSelectionAnts(){
  ox.drawImage(antsFrame,0,0);
 }
 function startSelectionAnts(){if(!state.selection||antsRaf)return;antsRaf=requestAnimationFrame(selectionAntsTick);}
-function selectionAntsTick(){antsRaf=0;if(!state.selection)return;antsOffset=(antsOffset+.6)%8;render();startSelectionAnts();}
+function selectionAntsTick(ts){
+ antsRaf=0;if(!state.selection){antsLast=0;return;}
+ if(!antsLast)antsLast=ts;
+ const dt=Math.min(100,ts-antsLast);
+ if(dt<33){startSelectionAnts();return;}
+ antsLast=ts;antsOffset=(antsOffset+dt*.006)%8;render();startSelectionAnts();
+}
 function drawCrop(x,y,s){
  if(state.tool!=='crop')return;
  const c=state.crop;if(!c)return;
@@ -276,12 +283,21 @@ function setSelection(c,bounds=null,object=false){state.selection=c;state.select
 function fullLayer(l){const c=canvas(state.w,state.h);c.getContext('2d').drawImage(l.canvas,l.x,l.y);return c;}
 function flatten(){const c=canvas(state.w,state.h),cx=c.getContext('2d');for(const l of state.layers)if(l.visible){cx.globalAlpha=l.opacity;cx.drawImage(l.canvas,l.x,l.y);}return c;}
 
+function hardCircle(pc,cx,cy,r,color){
+ const side=pc.canvas.width,img=pc.createImageData(side,side),data=img.data,[cr,cg,cb]=hexToRgb(color),r2=r*r;
+ if(r<=.5){const x=Math.max(0,Math.min(side-1,Math.floor(cx))),y=Math.max(0,Math.min(side-1,Math.floor(cy))),i=(y*side+x)*4;data[i]=cr;data[i+1]=cg;data[i+2]=cb;data[i+3]=255;pc.putImageData(img,0,0);return;}
+ for(let y=0;y<side;y++){const dy=y+.5-cy,ys=dy*dy;if(ys>r2)continue;const span=Math.sqrt(r2-ys),x0=Math.max(0,Math.ceil(cx-span-.5)),x1=Math.min(side-1,Math.floor(cx+span-.5));for(let x=x0;x<=x1;x++){const i=(y*side+x)*4;data[i]=cr;data[i+1]=cg;data[i+2]=cb;data[i+3]=255;}}
+ pc.putImageData(img,0,0);
+}
 function stamp(l,p,tool){
  const size=Math.max(1,+$('size').value),r=size/2,left=Math.floor(p.x-r-2),top=Math.floor(p.y-r-2),side=Math.ceil(size+4);
- const patch=canvas(side,side),pc=patch.getContext('2d');
- if(tool==='eraser'){pc.fillStyle=state.eraseBg?$('bgcolor').value:'#000';}
- else{const soft=+$('softness').value/100;if(soft>0){const gradient=pc.createRadialGradient(p.x-left,p.y-top,r*(1-soft),p.x-left,p.y-top,r);gradient.addColorStop(0,$('color').value);gradient.addColorStop(1,'rgba(0,0,0,0)');pc.fillStyle=gradient;}else pc.fillStyle=$('color').value;}
- pc.beginPath();pc.arc(p.x-left,p.y-top,r,0,Math.PI*2);pc.fill();
+ const patch=canvas(side,side),pc=patch.getContext('2d'),cx=p.x-left,cy=p.y-top;
+ const color=tool==='eraser'?(state.eraseBg?$('bgcolor').value:'#000'):$('color').value;
+ const soft=tool==='eraser'?0:1-(+$('softness').value/100);
+ if(soft>0){
+  const gradient=pc.createRadialGradient(cx,cy,r*(1-soft),cx,cy,r);gradient.addColorStop(0,color);gradient.addColorStop(1,'rgba(0,0,0,0)');
+  pc.fillStyle=gradient;pc.beginPath();pc.arc(cx,cy,r,0,Math.PI*2);pc.fill();
+ }else hardCircle(pc,cx,cy,r,color);
  applySelection(patch,left,top);
  const target=l.canvas.getContext('2d');target.save();target.globalCompositeOperation=tool==='eraser'&&!state.eraseBg?'destination-out':'source-over';target.drawImage(patch,left-l.x,top-l.y);target.restore();
  l.modified=true;l.kind='raster';
@@ -583,16 +599,48 @@ async function fillAt(p){
 }
 
 const rpc=(method,params)=>thodHub.call('worker.'+method,params);
-async function upload(b){const {id}=await rpc('upload.begin');try{for(let offset=0;offset<b.size;offset+=512*1024){const part=await dataUrl(b.slice(offset,offset+512*1024));await rpc('upload.write',{id,offset,base64:part.split(',')[1]});$('progress').value=offset/b.size*15;}await rpc('upload.finish',{id});return id;}catch(e){await rpc('upload.release',{id}).catch(()=>{});throw e;}}
-async function runJob(kind,params){
- const {jobId}=await rpc('job.start',{kind,params});state.job=jobId;$('cancel').hidden=kind==='export.save';$('cancel').disabled=false;$('progress').value=0;
- while(true){const job=await rpc('job.status',{id:jobId});$('busy-label').textContent=job.message||'Обработка';if(typeof job.progress==='number')$('progress').value=job.progress;if(job.state==='done'){state.job=null;return job.result;}if(job.state==='error'||job.state==='canceled'){state.job=null;throw Error(job.error||'Операция отменена.');}await new Promise(r=>setTimeout(r,200));}
+let aiEnvironment=null;
+async function ensureAiWorker(){
+ if(!aiEnvironment){aiEnvironment=await rpc('environment');if(!aiEnvironment.modelFound)throw Error('Модель IS-Net не найдена в установленном пакете. Переустановите ThodCanvas.');}
+ return aiEnvironment;
+}
+async function upload(b,from=0,to=15){
+ const {id}=await rpc('upload.begin');
+ try{
+  if(!b.size){setBusyProgress(to);await rpc('upload.finish',{id});return id;}
+  for(let offset=0;offset<b.size;offset+=512*1024){
+   const end=Math.min(b.size,offset+512*1024),part=await dataUrl(b.slice(offset,end));
+   await rpc('upload.write',{id,offset,base64:part.split(',')[1]});setBusyProgress(from+end/b.size*(to-from));
+  }
+  await rpc('upload.finish',{id});setBusyProgress(to);return id;
+ }catch(e){await rpc('upload.release',{id}).catch(()=>{});throw e;}
+}
+async function runJob(kind,params,from=0,to=100){
+ setBusyProgress(from);
+ const {jobId}=await rpc('job.start',{kind,params});state.job=jobId;$('cancel').hidden=kind==='export.save';$('cancel').disabled=false;
+ while(true){
+  const job=await rpc('job.status',{id:jobId});
+  const progress=typeof job.progress==='number'?from+Math.max(0,Math.min(100,job.progress))/100*(to-from):from;
+  setBusyProgress(progress,job.message||'Обработка');
+  if(job.state==='done'){state.job=null;setBusyProgress(to);return job.result;}
+  if(job.state==='error'||job.state==='canceled'){state.job=null;throw Error(job.error||'Операция отменена.');}
+  await new Promise(r=>setTimeout(r,200));
+ }
+}
+function aiInput(l){
+ const src=fullLayer(l),max=1024,scale=Math.min(1,max/Math.max(src.width,src.height));
+ if(scale>=1)return src;
+ const c=canvas(src.width*scale,src.height*scale),cctx=c.getContext('2d');
+ cctx.imageSmoothingEnabled=true;cctx.imageSmoothingQuality='high';cctx.drawImage(src,0,0,c.width,c.height);
+ return c;
 }
 async function aiMask(l){
- $('busy-label').textContent='Подготовка изображения для IS-Net';
- const c=fullLayer(l),id=await upload(await blob(c));
+ setBusyProgress(0,'Подготовка изображения для IS-Net');
+ await ensureAiWorker();
+ setBusyProgress(3,'Подготовка изображения для IS-Net');
+ const id=await upload(await blob(aiInput(l)),3,35);
  try{
-  const result=await runJob('mask',{id});
+  const result=await runJob('mask',{id},35,100);
   const small=await fromBlob(fromDataUrl(result.mask)),sctx=small.getContext('2d'),pixels=sctx.getImageData(0,0,small.width,small.height);
   for(let i=0;i<pixels.data.length;i+=4){pixels.data[i+3]=pixels.data[i];pixels.data[i]=pixels.data[i+1]=pixels.data[i+2]=255;}
   sctx.putImageData(pixels,0,0);
@@ -690,8 +738,8 @@ async function save(project){
  let b;
  if(project)b=await projectBlob();
  else{const c=flatten();b=await blob(c);}
- const id=await upload(b);
- try{const result=await runJob('export.save',{id,type:project?'project':'png',name:state.name});if(!result.canceled){if(project)setDirty(false);status((project?'Проект сохранён: ':'PNG сохранён: ')+result.path);}}finally{await rpc('upload.release',{id}).catch(()=>{});}
+ const id=await upload(b,0,15);
+ try{const result=await runJob('export.save',{id,type:project?'project':'png',name:state.name},15,100);if(!result.canceled){if(project)setDirty(false);status((project?'Проект сохранён: ':'PNG сохранён: ')+result.path);}}finally{await rpc('upload.release',{id}).catch(()=>{});}
 }
 
 const menu=$('menu');

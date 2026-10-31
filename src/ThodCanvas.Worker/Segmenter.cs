@@ -25,6 +25,7 @@ internal sealed class Segmenter : IDisposable
     }
     public async Task<object> MaskAsync(string path,JobContext ctx)
     {
+        ctx.Report(2,"Проверяю изображение");
         // The editor uploads lossless PNG, limited to 64 MP. Read dimensions before decoding.
         using(var input=File.OpenRead(path))
         {
@@ -34,8 +35,9 @@ internal sealed class Segmenter : IDisposable
             var h=System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(header[20..24]);
             if(w<1||h<1||w>16384||h>16384||(long)w*h>64_000_000)throw new IOException("Изображение больше 64 Мп или 16384 px. Уменьшите его явно перед обработкой.");
         }
+        ctx.Report(5,"Читаю изображение");
         using var original=new Bitmap(path);var values=await RunModelAsync(original,ctx);
-        ctx.ThrowIfCancellationRequested();ctx.Report(90,"Готовлю маску выделения");
+        ctx.ThrowIfCancellationRequested();ctx.Report(88,"Готовлю маску выделения");
         using var mask=new Bitmap(ModelSize,ModelSize,PixelFormat.Format32bppArgb);
         var data=mask.LockBits(new Rectangle(0,0,ModelSize,ModelSize),ImageLockMode.WriteOnly,PixelFormat.Format32bppArgb);
         try
@@ -46,14 +48,18 @@ internal sealed class Segmenter : IDisposable
         }
         finally{mask.UnlockBits(data);}
         using var output=new MemoryStream();mask.Save(output,ImageFormat.Png);
+        ctx.Report(97,"Завершаю");
         return new{mask="data:image/png;base64,"+Convert.ToBase64String(output.ToArray()),model="IS-Net",width=original.Width,height=original.Height};
     }
     private async Task<float[]> RunModelAsync(Bitmap original, JobContext ctx)
     {
+        ctx.Report(7,"Ожидание IS-Net");
         await _gate.WaitAsync(ctx.Token);
         try
         {
+            ctx.Report(10,"Загрузка модели IS-Net");
             var session = EnsureSession();
+            ctx.Report(22,"Подготовка входа IS-Net");
             var tensor = new DenseTensor<float>(new[] { 1, 3, ModelSize, ModelSize });
             using var square = new Bitmap(ModelSize, ModelSize, PixelFormat.Format24bppRgb);
             using (var g = Graphics.FromImage(square))
@@ -83,9 +89,10 @@ internal sealed class Segmenter : IDisposable
             }
             finally { square.UnlockBits(data); }
 
-            ctx.Report(20, "Нейросеть выделяет объект");
+            ctx.Report(30, "Нейросеть выделяет объект");
             var inputs = new[] { NamedOnnxValue.CreateFromTensor(_inputName!, tensor) };
             using var results = session.Run(inputs);
+            ctx.Report(78,"Обрабатываю маску");
             var output = results.First();
             var values = output.AsEnumerable<float>().ToArray();
             if (values.Length < ModelSize * ModelSize) throw new InvalidDataException("Модель вернула неожиданный результат.");

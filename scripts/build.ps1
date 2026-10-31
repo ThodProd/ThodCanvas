@@ -16,7 +16,7 @@ New-Item (Join-Path $stage 'worker/models') -ItemType Directory -Force | Out-Nul
 Copy-Item -LiteralPath $ModelFile -Destination (Join-Path $stage 'worker/models/isnet-general-use.onnx')
 Copy-Item (Join-Path $root 'hub/manifest.json') (Join-Path $stage 'manifest.json')
 foreach($name in @('README.md','LICENSE','THIRD-PARTY-NOTICES.md','licenses')){Copy-Item (Join-Path $root $name) $stage -Recurse}
-& (Join-Path $HubRoot 'scripts/package-module.ps1') -PackageDirectory $stage -Repository ThodProd/ThodCanvas -OutputDirectory $OutputDirectory -Notes 'Группы инструментов с всплывающими окнами справа от кнопки. Один ластик: галочка «Стирать фоном» или полная прозрачность. Волшебная палочка по цвету и бегущая граница выделения. Исправлен ввод текста: каретка сразу получает фокус, новый слой сохраняется.'
+& (Join-Path $HubRoot 'scripts/package-module.ps1') -PackageDirectory $stage -Repository ThodProd/ThodCanvas -OutputDirectory $OutputDirectory -Notes 'Жёсткость кисти с чистым краем без светлой каймы. Группы инструментов с всплывающими окнами, один ластик с выбором цвета фона или прозрачности. Волшебная палочка и более спокойная граница выделения. Подготовка IS-Net уменьшает изображение, проверяет модель и показывает проценты. Исправлен ввод текста на холсте.'
 $zipPath=Join-Path $OutputDirectory ("$($manifest.id)-$($manifest.version)-win-x64.zip")
 if(!(Test-Path -LiteralPath $zipPath)){throw 'Package was not created'}
 # The catalog format uses forward slashes inside ZIP archives; rewrite entries created by .NET on Windows.
