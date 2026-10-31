@@ -36,6 +36,15 @@ main{display:grid;grid-template-columns:56px minmax(0,1fr) 300px;flex:1;min-heig
 #tools button{border-color:transparent;background:transparent;width:40px;height:40px;padding:10px;flex-shrink:0;color:var(--text)}
 #tools button:hover:not(:disabled){background:var(--soft);color:var(--accent)}
 #tools button.active{background:var(--soft);color:var(--accent);border-color:var(--accent)}
+#tools button.has-sub::after{content:'';position:absolute;right:3px;bottom:3px;border-left:4px solid transparent;border-top:4px solid currentColor;opacity:.7}
+#tools button{position:relative}
+#tool-flyout{position:fixed;z-index:24;min-width:196px;background:var(--bg);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:5px;display:flex;flex-direction:column;gap:2px}
+#tool-flyout::before{content:'';position:absolute;left:-11px;top:0;width:11px;height:100%}
+#tool-flyout button{display:flex;align-items:center;gap:9px;width:100%;padding:7px 9px;border-color:transparent;background:transparent;border-radius:7px;text-align:left;font-size:13px}
+#tool-flyout button:hover:not(:disabled){background:var(--soft)}
+#tool-flyout button.active{background:var(--soft);color:var(--accent);font-weight:600}
+#tool-flyout svg{width:18px;height:18px}
+#tool-flyout .shortcut{margin-left:auto;color:var(--muted);font-size:11px}
 #viewport{position:relative;overflow:hidden;background:var(--canvas);min-width:0}
 #screen{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
 #viewport:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}

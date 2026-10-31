@@ -16,7 +16,7 @@ New-Item (Join-Path $stage 'worker/models') -ItemType Directory -Force | Out-Nul
 Copy-Item -LiteralPath $ModelFile -Destination (Join-Path $stage 'worker/models/isnet-general-use.onnx')
 Copy-Item (Join-Path $root 'hub/manifest.json') (Join-Path $stage 'manifest.json')
 foreach($name in @('README.md','LICENSE','THIRD-PARTY-NOTICES.md','licenses')){Copy-Item (Join-Path $root $name) $stage -Recurse}
-& (Join-Path $HubRoot 'scripts/package-module.ps1') -PackageDirectory $stage -Repository ThodProd/ThodCanvas -OutputDirectory $OutputDirectory -Notes 'Текст вводится прямо на холсте с кареткой, шрифтами и живым обновлением. Кадрирование с рамкой по краям, видимое выделение, инверсия, заливка, копирование и вырезание на новый слой. AI-выделение объекта щелчком и удаление фона нейросетью с мягким краем.'
+& (Join-Path $HubRoot 'scripts/package-module.ps1') -PackageDirectory $stage -Repository ThodProd/ThodCanvas -OutputDirectory $OutputDirectory -Notes 'Группы инструментов с всплывающими окнами справа от кнопки. Один ластик: галочка «Стирать фоном» или полная прозрачность. Волшебная палочка по цвету и бегущая граница выделения. Исправлен ввод текста: каретка сразу получает фокус, новый слой сохраняется.'
 $zipPath=Join-Path $OutputDirectory ("$($manifest.id)-$($manifest.version)-win-x64.zip")
 if(!(Test-Path -LiteralPath $zipPath)){throw 'Package was not created'}
 # The catalog format uses forward slashes inside ZIP archives; rewrite entries created by .NET on Windows.
