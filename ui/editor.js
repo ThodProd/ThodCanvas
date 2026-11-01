@@ -82,6 +82,7 @@ function activateGroupItem(group,item){
  if(item.tool)setTool(item.tool);
  if(item.selectMode!==undefined){state.selectMode=item.selectMode;toolOptions();}
  if(item.bgMode!==undefined){state.bgMode=item.bgMode;toolOptions();}
+ viewport.style.cursor=baseCursor();
  state.lastByGroup[group.id]=itemId(item);
  syncToolButtons();
  if(flyoutGroup===group.id)fillToolFlyout(group);
@@ -133,7 +134,24 @@ function action(label,fn){return task(label,()=>mutate(label,fn));}
 async function historyStep(delta){return task(delta<0?'Отмена':'Повтор',async()=>{const n=state.index+delta;if(n<0||n>=state.history.length)return;const before={w:state.w,h:state.h};await restore(state.history[n]);state.index=n;state.crop=null;if(before.w!==state.w||before.h!==state.h)fit();setDirty(true);sync();status(state.history[n].label);});}
 function hexToRgb(hex){const h=hex.replace('#','');return [0,2,4].map(i=>parseInt(h.slice(i,i+2),16)||0);}
 
-function baseCursor(){if(state.space)return 'grab';return state.tool==='hand'?'grab':state.tool==='move'?'move':state.tool==='text'?'text':'pointer';}
+const svgCursor=(svg,x,y)=>`url("data:image/svg+xml,${encodeURIComponent(svg)}") ${x} ${y}, pointer`;
+const toolCursors={
+ brush:svgCursor(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><path d="M23 3l6 6-11 11-6-6z" fill="#fff" stroke="#111" stroke-width="2" stroke-linejoin="round"/><path d="M12 14l6 6-3 3-6-6z" fill="#ddd" stroke="#111" stroke-width="2" stroke-linejoin="round"/><path d="M9 18l5 5-4 4-5-5z" fill="#fff" stroke="#111" stroke-width="2" stroke-linejoin="round"/></svg>`,10,27),
+ fill:svgCursor(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><path d="M8 10h16l-3 16H11z" fill="#fff" stroke="#111" stroke-width="2" stroke-linejoin="round"/><path d="M10 10c0-6 12-6 12 0" fill="none" stroke="#111" stroke-width="2"/><path d="M26 20c0 3-2 5-2 5s-2-2-2-5c0-2 2-3 2-3s2 1 2 3z" fill="#367de8" stroke="#111" stroke-width="1.5"/></svg>`,9,26),
+ eraser:svgCursor(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><path d="M4 20L17 5l11 9-13 15z" fill="#fff" stroke="#111" stroke-width="2" stroke-linejoin="round"/><path d="M11 13l10 8" stroke="#111" stroke-width="2"/></svg>`,15,29),
+ wand:svgCursor(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><path d="M27 5L12 20" stroke="#111" stroke-width="7" stroke-linecap="round"/><path d="M27 5L12 20" stroke="#fff" stroke-width="3" stroke-linecap="round"/><path d="M6 19l1.6 3.4L11 24l-3.4 1.6L6 29l-1.6-3.4L1 24l3.4-1.6z" fill="#fff" stroke="#111" stroke-width="1.5" stroke-linejoin="round"/></svg>`,5,25)
+};
+function baseCursor(){
+ if(state.space)return 'grab';
+ if(state.tool==='hand')return 'grab';
+ if(state.tool==='move')return 'move';
+ if(state.tool==='text')return 'text';
+ if(state.tool==='brush')return toolCursors.brush;
+ if(state.tool==='fill')return toolCursors.fill;
+ if(state.tool==='eraser')return toolCursors.eraser;
+ if(state.tool==='select'&&state.selectMode==='wand')return toolCursors.wand;
+ return 'pointer';
+}
 function setTool(id){
  if(state.busy||state.gesture)return;
  if(state.textEdit)finishTextEdit();

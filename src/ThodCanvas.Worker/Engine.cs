@@ -22,7 +22,7 @@ internal sealed class Engine : IAsyncDisposable
         var p=new Params(parameters);
         switch(method)
         {
-            case "environment": return Task.FromResult<object>(new {version="1.3.1",model="IS-Net",modelFound=_model.Available});
+            case "environment": return Task.FromResult<object>(new {version="1.3.2",model="IS-Net",modelFound=_model.Available});
             case "upload.begin":
                 if(_assets.Count>=32)throw new IOException("Слишком много временных файлов. Закройте редактор и откройте снова.");
                 var id=Guid.NewGuid().ToString("N");var path=Path.Combine(_root,id+".data");
