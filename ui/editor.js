@@ -116,7 +116,21 @@ function makeLayer(c,name,kind='raster',extra={}){checkBudget(c.width*c.height);
 function addLayer(l,index=state.layers.length){state.layers.splice(index,0,l);state.active=l.id;}
 function setDirty(value){state.dirty=value;thodHub.call('state.dirty',{dirty:value}).catch(()=>{if(value)status('Для защиты несохранённых изменений обновите ThodHUB до 0.1.1.');});}
 function status(s){$('status').textContent=s;}
-async function message(text,confirm=false){if($('message-dialog').open)return false;$('message-title').textContent=confirm?'Продолжить?':'ThodCanvas';$('message-text').textContent=text;$('message-cancel').hidden=!confirm;const d=$('message-dialog');d.showModal();return await new Promise(resolve=>d.addEventListener('close',()=>resolve(d.returnValue==='ok'),{once:true}));}
+async function message(text,confirm=false){
+ const d=$('message-dialog');if(d.open)return false;
+ $('message-title').textContent=confirm?'Продолжить?':'ThodCanvas';
+ $('message-text').textContent=text;
+ const ok=$('message-ok'),cancel=$('message-cancel');
+ cancel.hidden=!confirm;
+ const finish=value=>{if(d.open)d.close(value);};
+ ok.onclick=()=>finish('ok');
+ cancel.onclick=()=>finish('cancel');
+ d.onkeydown=e=>{if(e.key==='Enter'&&!e.repeat){e.preventDefault();finish('ok');}};
+ d.returnValue='';
+ d.showModal();
+ ok.focus();
+ return await new Promise(resolve=>d.addEventListener('close',()=>resolve(d.returnValue==='ok'),{once:true}));
+}
 function setBusyProgress(value,label){const p=Math.max(0,Math.min(100,Math.round(value||0)));$('progress').value=p;$('busy-percent').textContent=p+'%';if(label)$('busy-label').textContent=label;}
 function setBusy(label){state.busy=true;$('busy').hidden=false;setBusyProgress(0,label);$('cancel').hidden=true;$('cancel').disabled=false;sync();}
 async function task(label,fn){if(state.textEdit&&label!=='Текст')await finishTextEdit();if(state.busy||state.gesture)return;setBusy(label);try{return await fn();}catch(e){status(e.message);if(!/отмен/i.test(e.message||''))await message(e.message);}finally{state.busy=false;state.job=null;$('busy').hidden=true;$('cancel').hidden=true;setBusyProgress(0);sync();render();}}
